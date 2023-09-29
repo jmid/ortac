@@ -33,6 +33,10 @@
  (name hashtbl)
  (modules hashtbl))
 
+(library
+ (name queue)
+ (modules queue))
+
 (test
  (name array_stm_tests)
  (package ortac-qcheck-stm)
@@ -132,6 +136,48 @@
  (alias launchtests)
  (action
   (run %{dep:hashtbl_stm_tests.exe} -v)))
+
+(test
+ (name queue_stm_tests)
+ (package ortac-qcheck-stm)
+ (modules queue_stm_tests)
+ (libraries
+  qcheck-core
+  qcheck-core.runner
+  qcheck-stm.stm
+  qcheck-stm.sequential
+  qcheck-multicoretests-util
+  ortac-runtime
+  queue)
+ (action
+  (echo
+   "\n%{dep:queue_stm_tests.exe} has been generated with the ortac-qcheck-stm plugin.\n")))
+
+(rule
+ (target queue_stm_tests.ml)
+ (package ortac-qcheck-stm)
+ (deps
+  (package ortac-core)
+  (package ortac-qcheck-stm))
+ (action
+  (setenv
+   ORTAC_ONLY_PLUGIN
+   qcheck-stm
+   (with-stderr-to
+    queue_errors
+    (run
+     ortac
+     qcheck-stm
+     %{dep:queue.mli}
+     "create ()"
+     "char t"
+     -o
+     %{target})))))
+
+(rule
+ (alias launchtests)
+ (action
+  (run %{dep:queue_stm_tests.exe} -v)))
 
 (library
  (name record)
