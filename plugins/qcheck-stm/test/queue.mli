@@ -13,6 +13,6 @@ val add : 'a -> 'a t -> unit
 val take : 'a t -> 'a
 (*@ a = take q
     modifies q
-    raises (Failure _) -> q.contents = []
+    raises Failure _ -> q.contents = []
     ensures q.contents = List.tl (old q.contents)
     ensures a = List.hd q.contents *)
