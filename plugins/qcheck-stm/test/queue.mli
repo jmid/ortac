@@ -14,5 +14,6 @@ val take : 'a t -> 'a
 (*@ a = take q
     modifies q
     raises Failure _ -> q.contents = []
-    ensures q.contents = List.tl (old q.contents)
-    ensures a = List.hd q.contents *)
+    ensures match q.contents with
+      | [] -> true
+      | q_hd::q_tail -> a = q_hd /\ q.contents = q_tail  *)
