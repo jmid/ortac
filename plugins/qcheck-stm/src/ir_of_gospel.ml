@@ -15,8 +15,8 @@ let no_functional_arg_or_big_tuple vd =
   let open Ppxlib in
   let rec contains_arrow ty =
     match ty.ptyp_desc with
-    | Ptyp_arrow (_, _, _) ->
-        error (Functional_argument vd.vd_name.id_str, ty.ptyp_loc)
+(*  | Ptyp_arrow (_, _, _) ->
+        error (Functional_argument vd.vd_name.id_str, ty.ptyp_loc) *)
     | Ptyp_tuple xs when List.length xs > 9 ->
         error (Tuple_arity vd.vd_name.id_str, ty.ptyp_loc)
     | Ptyp_tuple xs | Ptyp_constr (_, xs) -> traverse_ contains_arrow xs
