@@ -981,6 +981,8 @@ let pp_cmd_case config value =
         let* pps = promote_map pp_of_ty xs in
         let func = qualify_pp ("pp_tuple" ^ string_of_int (List.length xs)) in
         ok (pexp_apply func (List.map (fun e -> (Nolabel, e)) pps))
+    | Ptyp_arrow (Nolabel, _l, _r) ->
+      evar "Fn.print" |> ok
     | Ptyp_constr (lid, xs) ->
         let* xs = promote_map pp_of_ty xs
         and* s = munge_longident false ty lid in
