@@ -127,6 +127,7 @@ let pp_kind ppf kind =
      but in fact we support all the types that the Gospel type-checker supports,
      so that error message should never get reported to the end user *)
   | Type_not_supported ty -> pf ppf "Type %s not supported" ty
+  | Type_not_supported_in_function_argument ty -> pf ppf "Type %s not supported inside higher-order function" ty
   (* Errors *)
   | Impossible_init_state_generation (Mismatch_number_of_arguments fct) ->
       pf ppf "Error in INIT expression %s:@ %a" fct text
