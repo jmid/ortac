@@ -237,6 +237,30 @@ let exp_of_core_type ?(use_small = false) inst typ =
         in
         pexp_apply tup_constr
         <$> (List.map (fun e -> (Nolabel, e)) <$> promote_map aux xs)
+    | Ptyp_arrow (Nolabel, t1, t2) ->
+        let fun_constr = pexp_ident (lident ("fun1")) (* FIXME generalize to 1-4 *)
+        in
+        pexp_apply fun_constr
+        <$>
+        (List.map (fun e -> (Nolabel, e))
+         <$>
+         (let head_args =
+            match t1.ptyp_desc with
+            | Ptyp_constr (c, []) ->
+              let* constr_id = munge_longident false ty c in
+              let constr_str = evar ("Observable." ^ constr_id) in
+              pexp_apply constr_str [] |> ok
+            | _ ->
+              error
+                ( Type_not_supported_in_function_argument (Fmt.str "%a" Pprintast.core_type typ),
+                  typ.ptyp_loc )
+          in
+          (* Idea: "int -> string -> bool" -> "fun2 Observable.int Observable.string bool" *)
+          (* visit all args, prefix with "Observable." *)
+          [head_args;
+           (* range is an arbitrary, but for unit, bool, char, int, float, tup, ... names agress *)
+           aux t2] |> promote))
+           (* FIXME walk t2 recursively to collect n args *)
     | _ ->
         error
           ( Type_not_supported (Fmt.str "%a" Pprintast.core_type typ),
