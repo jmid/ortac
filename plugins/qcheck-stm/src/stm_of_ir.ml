@@ -120,7 +120,7 @@ let subst_term state ?(out_of_scope = []) ~gos_t ?(old_lz = false) ~fun_vars ~ol
           raise (ImpossibleSubst (term, `NotModel))
     | Tvar { vs_name; _ } when List.mem vs_name fun_vars ->
         let open Gospel in
-        let fn_apply_name = Ident.create ~loc:Location.none "Fn.apply" in
+        let fn_apply_name = Ident.create ~loc:Location.none "QCheck.Fn.apply" in
         let fn_apply_ty = Ttypes.fresh_ty_var "a" in
         let fn_apply_term = Tterm_helper.mk_term (Tvar { vs_name = fn_apply_name; vs_ty = fn_apply_ty}) None Location.none in
         Tterm_helper.mk_term (Tapp (Symbols.fs_apply, [fn_apply_term; term])) None Location.none
@@ -369,7 +369,7 @@ let run_case config sut_name value =
             let suts, args = aux r xs rest fun_vars in
             (tmp :: suts, (trans_lb lb, evar tmp) :: args)
         | Ptyp_arrow (lb, l, r), _x::xs, sut_vars, f::fun_vars when is_a_function l ->
-            let app = pexp_apply (evar "Fn.apply") [(trans_lb lb, exp_of_ident f)] in
+            let app = pexp_apply (evar "QCheck.Fn.apply") [(trans_lb lb, exp_of_ident f)] in
             let suts, args = aux r xs sut_vars fun_vars in
             (suts, (trans_lb lb, app) :: args)
         | Ptyp_arrow (lb, _, r), x :: xs, suts, fun_vars ->
