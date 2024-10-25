@@ -13,18 +13,18 @@ let constant_test vd =
 let no_third_order_fun_or_big_tuple vd =
   let open Reserr in
   let open Ppxlib in
-  let rec contains_arrow ty =
+(*let rec contains_arrow ty =
     match ty.ptyp_desc with
     | Ptyp_arrow (_, _, _) -> true
     | Ptyp_tuple xs | Ptyp_constr (_, xs) -> List.exists contains_arrow xs
     | Ptyp_alias (t, _) -> contains_arrow t
     | _ -> false
-  in
-  let rec contains_nested_arrow ty =
+  in*)
+  let (*rec*) contains_nested_arrow ty =
     match ty.ptyp_desc with
-    | Ptyp_arrow (_, l, r) -> contains_arrow l || contains_nested_arrow r
+(*  | Ptyp_arrow (_, l, r) -> contains_arrow l || contains_nested_arrow r
     | Ptyp_tuple xs | Ptyp_constr (_, xs) -> List.exists contains_nested_arrow xs
-    | Ptyp_alias (t, _) -> contains_nested_arrow t
+    | Ptyp_alias (t, _) -> contains_nested_arrow t*)
     | _ -> false
   in
   let rec contains_big_tuple ty =
