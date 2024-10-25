@@ -1010,13 +1010,14 @@ let pp_cmd_case config value =
         let func = qualify_pp ("pp_tuple" ^ string_of_int (List.length xs)) in
         ok (pexp_apply func (List.map (fun e -> (Nolabel, e)) pps))
     | Ptyp_constr (lid, xs) ->
-        let* xs = promote_map pp_of_ty xs
-        and* s = munge_longident false ty lid in
+        let* s = munge_longident false ty lid in
         let pp = qualify_pp ("pp_" ^ s) in
-        ok
-          (match xs with
-          | [] -> pp
-          | _ -> pexp_apply pp (List.map (fun x -> (Nolabel, x)) xs))
+          (match s,xs with
+          | "QCheck.fun_",_ -> ok pp (* functions have embedded printers *)
+          | _,[] -> ok pp
+          | _ ->
+            let* xs = promote_map pp_of_ty xs in
+            ok (pexp_apply pp (List.map (fun x -> (Nolabel, x)) xs)))
     | _ ->
         error
           (Type_not_supported (Fmt.str "%a" Pprintast.core_type ty), ty.ptyp_loc)
@@ -1454,14 +1455,14 @@ let pp_ortac_cmd_case config suts last value =
         let func = qualify_pp ("pp_tuple" ^ string_of_int (List.length xs)) in
         ok (pexp_apply func (List.map (fun e -> (Nolabel, e)) pps))
     | Ptyp_constr (lid, xs) ->
-        let* xs = promote_map pp_of_ty xs
-        and* s = munge_longident false ty lid in
+        let* s = munge_longident false ty lid in
         let pp = qualify_pp ("pp_" ^ s) in
-        ok
-          (match s,xs with
-          | "QCheck.fun_",_ -> pp (* functions have embedded printers *)
-          | _,[] -> pp
-          | _ -> pexp_apply pp (List.map (fun x -> (Nolabel, x)) xs))
+        (match s,xs with
+        | "QCheck.fun_",_ -> ok pp (* functions have embedded printers *)
+        | _,[] -> ok pp
+        | _ ->
+          let* xs = promote_map pp_of_ty xs in
+          ok (pexp_apply pp (List.map (fun x -> (Nolabel, x)) xs)))
     (* FIXME : add Ptyp_arrow case here? *)
     | _ ->
         error
