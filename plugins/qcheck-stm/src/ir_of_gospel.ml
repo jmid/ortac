@@ -88,6 +88,7 @@ let unify case sut_ty ty =
           | _, Ptyp_any -> ok i
           | _, Ptyp_var a -> add_if_needed a x i
           | Ptyp_tuple xs, Ptyp_tuple ys -> aux i (xs, ys)
+          | Ptyp_arrow (_,l,r), Ptyp_arrow (_,l',r') -> aux i ([l;r], [l';r'])
           | Ptyp_constr (c, xs), Ptyp_constr (d, ys) when c.txt = d.txt ->
               aux i (xs, ys)
           | _ -> fail ()
