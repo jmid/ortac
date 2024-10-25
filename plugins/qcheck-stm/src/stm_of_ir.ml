@@ -1623,10 +1623,10 @@ let stm config ir =
           cmd_show;
           cleanup;
           arb_cmd;
-          next_state; (* FIXME: needs adjusting to dig out function value *)
+          next_state;
           precond;
           dummy_postcond;
-          run;        (* FIXME: needs adjusting to dig out function value *)
+          run;
         ])
   in
   let stm_spec =
