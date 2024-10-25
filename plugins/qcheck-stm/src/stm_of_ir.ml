@@ -31,7 +31,7 @@ let may_raise_exception v =
   | [], [] -> false
   | _, _ -> true
 
-let subst_core_type inst ty =
+let subst_core_type ~insert_prefix inst ty =
   let rec aux ty =
     {
       ty with
@@ -45,8 +45,9 @@ let subst_core_type inst ty =
         | Ptyp_arrow (x, l, r) ->
             let l = aux l and r = aux r in
             let arrow = Ptyp_arrow (x, l, r) in
+            let fun_name = if insert_prefix then "QCheck.fun_" else "fun_" in
              (* "int -> char" ~~> "(int -> char) fun_" *)
-            Ptyp_constr (lident "QCheck.fun_", [{ty with ptyp_desc = arrow}])
+            Ptyp_constr (lident fun_name, [{ty with ptyp_desc = arrow}])
         | Ptyp_tuple elems ->
             let elems = List.map aux elems in
             Ptyp_tuple elems
@@ -972,7 +973,7 @@ let dummy_postcond =
 let cmd_constructor value =
   let name = String.capitalize_ascii value.id.Ident.id_str |> noloc in
   let args =
-    List.map (fun (ty, _) -> subst_core_type value.inst ty) value.args
+    List.map (fun (ty, _) -> subst_core_type ~insert_prefix:true value.inst ty) value.args
   in
   constructor_declaration ~name ~args:(Pcstr_tuple args) ~res:None
 
@@ -1017,7 +1018,7 @@ let pp_cmd_case config value =
           let* fmt, pps = aux r xs in
           ok ("<sut>" :: fmt, pps)
       | Ptyp_arrow (_, _, r), (ty, id) :: xs ->
-          let ty = subst_core_type value.inst ty in
+          let ty = subst_core_type ~insert_prefix:false value.inst ty in
           let* pp = pp_of_ty ty and* fmt, pps = aux r xs in
           ok
             ( "%a" :: fmt,
@@ -1467,7 +1468,7 @@ let pp_ortac_cmd_case config suts last value =
           in
           ok ("%s" :: fmt, get_sut :: pps)
       | Ptyp_arrow (_, _, r), (ty, id) :: xs ->
-          let ty = subst_core_type value.inst ty in
+          let ty = subst_core_type ~insert_prefix:false value.inst ty in
           let* pp = pp_of_ty ty and* fmt, pps = aux r n xs in
           ok
             ( "%a" :: fmt,
