@@ -40,7 +40,9 @@ let subst_core_type inst ty =
               (List.assoc_opt x inst)
         | Ptyp_arrow (x, l, r) ->
             let l = aux l and r = aux r in
-            Ptyp_arrow (x, l, r)
+            let arrow = Ptyp_arrow (x, l, r) in
+             (* "int -> char" ~~> "(int -> char) fun_" *)
+            Ptyp_constr (lident "fun_", [{ty with ptyp_desc = arrow}])
         | Ptyp_tuple elems ->
             let elems = List.map aux elems in
             Ptyp_tuple elems
@@ -1435,6 +1437,7 @@ let pp_ortac_cmd_case config suts last value =
           (match xs with
           | [] -> pp
           | _ -> pexp_apply pp (List.map (fun x -> (Nolabel, x)) xs))
+    (* FIXME : add Ptyp_arrow case here? *)
     | _ ->
         error
           (Type_not_supported (Fmt.str "%a" Pprintast.core_type ty), ty.ptyp_loc)
@@ -1604,14 +1607,14 @@ let stm config ir =
       @ sut_defs
       @ state_defs
       @ [
-          cmd;
-          cmd_show;
+          cmd;        (* FIXME: prints as (char -> char) *)
+          cmd_show;   (* FIXME: prints as Format.asprintf "%s %a <sut>" "map" (Fn.print true) f *)
           cleanup;
-          arb_cmd;
-          next_state;
+          arb_cmd;    (* Generator seems to work as expected *)
+          next_state; (* FIXME: needs adjusting to dig out function value *)
           precond;
           dummy_postcond;
-          run;
+          run;        (* FIXME: needs adjusting to dig out function value *)
         ])
   in
   let stm_spec =
