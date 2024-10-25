@@ -80,14 +80,14 @@ let ocaml_of_term cfg t =
   try term_with_catch ~context:cfg.Cfg.context t |> ok
   with W.Error e -> error e
 
-(** [subst_term state ~gos_t ?old_lz ~old_t ?new_lz ~new_t trm] will substitute
+(** [subst_term state ~gos_t ?old_lz ~old_t ?new_lz ~new_t ~fun_vars trm] will substitute
     occurrences in [gos_t] with the associated values from [new_t] or [old_t]
     depending on whether the occurrence appears above or under the [old]
     operator, adding a [Lazy.force] if the corresponding [xxx_lz] is [true]
     (defaults to [false]). [gos_t] must always be in a position in which it is
     applied to one of its model fields. Calling [subst_term] with [new_t] and
     [old_t] as the empty list will check that the term does not contain [gos_t] *)
-let subst_term state ?(out_of_scope = []) ~gos_t ?(old_lz = false) ~old_t
+let subst_term state ?(out_of_scope = []) ~gos_t ?(old_lz = false) ~fun_vars ~old_t
     ?(new_lz = false) ~new_t term =
   let exception
     ImpossibleSubst of
@@ -124,8 +124,12 @@ let subst_term state ?(out_of_scope = []) ~gos_t ?(old_lz = false) ~old_t
     (* Then, we check if the variable is not out_of_scope in the function we are building *)
     | Tvar { vs_name; _ } when List.exists (Ident.equal vs_name) out_of_scope ->
         raise (ImpossibleSubst (term, `OutOfScope))
-    | Tconst _ -> term
+    | Tvar { vs_name; _ } when List.mem vs_name fun_vars ->
+        let open Gospel in
+        let apply_sym = Symbols.lsymbol ~field:false (Ident.create ~loc:Location.none "Fn.apply") [] None in
+        Tterm_helper.t_app apply_sym [term] None Location.none
     | Tvar _ -> term
+    | Tconst _ -> term
     | Tapp (ls, terms) -> { term with t_node = Tapp (ls, List.map next terms) }
     | Tfield (t, ls) -> { term with t_node = Tfield (next t, ls) }
     | Tif (cnd, thn, els) ->
@@ -156,7 +160,7 @@ let subst_term state ?(out_of_scope = []) ~gos_t ?(old_lz = false) ~old_t
 
 let translate_checks config state value sut_map t =
   let open Reserr in
-  subst_term state ~gos_t:value.sut_vars ~old_t:sut_map ~new_t:sut_map t.term
+  subst_term state ~gos_t:value.sut_vars ~old_t:sut_map ~new_t:sut_map ~fun_vars:value.fun_vars t.term
   >>= ocaml_of_term config
 
 let str_of_ident = Fmt.str "%a" Ident.pp
@@ -461,7 +465,7 @@ let next_state_case state config state_ident nb_models value =
             let descriptions =
               List.filter_map
                 (fun (i, { model; description }) ->
-                  subst_term ~out_of_scope:value.ret state ~gos_t:value.sut_vars
+                  subst_term ~out_of_scope:value.ret state ~gos_t:value.sut_vars ~fun_vars:value.fun_vars
                     ~old_t:sut_map ~new_t:modified_sut_map description
                   >>= ocaml_of_term config
                   |> to_option
@@ -586,7 +590,7 @@ let precond_case config state state_ident value =
       list_and
       <$> promote_map
             (fun t ->
-              subst_term state ~gos_t:value.sut_vars ~old_t:[] ~new_t:sut_map t
+              subst_term state ~gos_t:value.sut_vars ~fun_vars:value.fun_vars ~old_t:[] ~new_t:sut_map t
               >>= ocaml_of_term config)
             value.precond
       >>= wrap
@@ -668,7 +672,7 @@ let postcond_case config state invariants idx state_ident new_state_ident value
       List.fold_left aux ([], [], []) value.sut_vars
     in
     let wrap e = (if vbs <> [] then pexp_let Nonrecursive vbs e else e) |> ok in
-    subst_term state ~gos_t:value.sut_vars ~old_lz:false ~old_t:sut_map_old
+    subst_term state ~gos_t:value.sut_vars ~fun_vars:value.fun_vars ~old_lz:false ~old_t:sut_map_old
       ~new_lz:true ~new_t:sut_map_new t.term
     >>= ocaml_of_term config
     >>= wrap
@@ -691,7 +695,7 @@ let postcond_case config state invariants idx state_ident new_state_ident value
     in
     let wrap = pexp_let Nonrecursive [ vbs ] in
     let* subst_term =
-      subst_term state ~gos_t:[ id ] ~old_t:[] ~new_t:[ sut_map ] ~new_lz:true
+      subst_term state ~gos_t:[ id ] ~fun_vars:value.fun_vars ~old_t:[] ~new_t:[ sut_map ] ~new_lz:true
         t.term
     in
     let* ocaml_term = ocaml_of_term config subst_term in
@@ -1099,7 +1103,7 @@ let init_state config ir =
   let translate_field_desc Ir.{ model; description } =
     let* desc =
       subst_term ir.state
-        ~gos_t:[ ir.init_state.returned_sut ]
+        ~gos_t:[ ir.init_state.returned_sut ] ~fun_vars:[]
         ~old_t:[] ~new_t:[] description
       >>= ocaml_of_term config
     in
@@ -1165,7 +1169,7 @@ let check_init_state config ir =
   and state_id = Ident.create ~loc:Location.none state_name in
   let translate_invariants id t =
     enot
-    <$> (subst_term ir.state ~gos_t:[ id ] ~old_t:[]
+    <$> (subst_term ir.state ~gos_t:[ id ] ~fun_vars:[] ~old_t:[]
            ~new_t:[ (id, state_id) ]
            t.term
         >>= ocaml_of_term config)
