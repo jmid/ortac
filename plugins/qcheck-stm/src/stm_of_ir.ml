@@ -4,6 +4,10 @@ open Ppxlib
 open Ortac_core.Builder
 module Ident = Gospel.Identifier.Ident
 
+let is_a_function ty =
+  let open Ppxlib in
+  match ty.ptyp_desc with Ptyp_arrow (_, _, _) -> true | _ -> false
+
 let ty_default = Ptyp_constr (noloc (Lident "char"), [])
 let pat_default = ppat_construct (lident "Char") None
 let exp_default = evar "char"
@@ -77,7 +81,7 @@ let ocaml_of_term cfg t =
   with W.Error e -> error e
 
 (** [subst_term state ~gos_t ?old_lz ~old_t ?new_lz ~new_t trm] will substitute
-    occurrences in [gos_t] with the associcated values from [new_t] or [old_t]
+    occurrences in [gos_t] with the associated values from [new_t] or [old_t]
     depending on whether the occurrence appears above or under the [old]
     operator, adding a [Lazy.force] if the corresponding [xxx_lz] is [true]
     (defaults to [false]). [gos_t] must always be in a position in which it is
@@ -340,22 +344,26 @@ let run_case config sut_name value =
       let efun = exp_of_ident value.id in
       let mk_arg = Option.fold ~none:eunit ~some:exp_of_ident in
       let trans_lb = function Optional l -> Labelled l | l -> l in
-      let rec aux ty args sut_vars =
-        match (ty.ptyp_desc, args, sut_vars) with
-        | Ptyp_arrow (lb, l, r), xs, sut :: rest when Cfg.is_sut config l ->
+      let rec aux ty args sut_vars fun_vars =
+        match (ty.ptyp_desc, args, sut_vars, fun_vars) with
+        | Ptyp_arrow (lb, l, r), xs, sut :: rest, fun_vars when Cfg.is_sut config l ->
             let tmp = gen_symbol ~prefix:(str_of_ident sut) () in
-            let suts, args = aux r xs rest in
+            let suts, args = aux r xs rest fun_vars in
             (tmp :: suts, (trans_lb lb, evar tmp) :: args)
-        | Ptyp_arrow (lb, _, r), x :: xs, suts ->
-            let suts, args = aux r xs suts in
+        | Ptyp_arrow (lb, l, r), _x::xs, sut_vars, f::fun_vars when is_a_function l ->
+            let app = pexp_apply (evar "Fn.apply") [(trans_lb lb, exp_of_ident f)] in
+            let suts, args = aux r xs sut_vars fun_vars in
+            (suts, (trans_lb lb, app) :: args)
+        | Ptyp_arrow (lb, _, r), x :: xs, suts, fun_vars ->
+            let suts, args = aux r xs suts fun_vars in
             (suts, (trans_lb lb, mk_arg x) :: args)
-        | _, [], _ -> ([], [])
-        | _, _, _ ->
+        | _, [], _, _ -> ([], [])
+        | _, _, _, _ ->
             failwith
               "shouldn't happen (list of arguments should be consistent with \
                type)"
       in
-      let suts, args = aux value.ty (List.map snd value.args) value.sut_vars in
+      let suts, args = aux value.ty (List.map snd value.args) value.sut_vars value.fun_vars in
       (suts, pexp_apply efun args)
     in
     let call = if may_raise_exception value then eprotect call else call in
@@ -1606,9 +1614,9 @@ let stm config ir =
       @ state_defs
       @ [
           cmd;        (* FIXME: instantiate polymorphic function args ('a -> 'b) *)
-          cmd_show;   (* FIXME: prints as Format.asprintf "%s %a <sut>" "map" (Fn.print true) f *)
+          cmd_show;
           cleanup;
-          arb_cmd;    (* Generator seems to work as expected *)
+          arb_cmd;
           next_state; (* FIXME: needs adjusting to dig out function value *)
           precond;
           dummy_postcond;
