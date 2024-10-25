@@ -257,22 +257,32 @@ let exp_of_core_type ?(use_small = false) inst typ =
         <$>
         (List.map (fun e -> (Nolabel, e))
          <$>
-         (let head_args =
-            match t1.ptyp_desc with
+         (let head_args = match t1.ptyp_desc with
             | Ptyp_constr (c, []) ->
               let* constr_id = munge_longident false ty c in
               let constr_str = evar ("Observable." ^ constr_id) in
               pexp_apply constr_str [] |> ok
             | _ ->
               error
-                ( Type_not_supported_in_function_argument (Fmt.str "%a" Pprintast.core_type typ),
+                ( Type_not_supported_in_function_argument (Fmt.str "%a" Pprintast.core_type t1),
                   typ.ptyp_loc )
           in
-          (* Idea: "int -> string -> bool" -> "fun2 Observable.int Observable.string bool" *)
+          (* Idea: "int -> string -> bool" -> "fun2 Observable.int Observable.string QCheck.bool" *)
           (* visit all args, prefix with "Observable." *)
+          (* the final arg is an arbitrary, hence we prefix with QCheck to avoid picking from QCheck.Gen *)
+          let final_arg = match t2.ptyp_desc with
+            | Ptyp_constr (c, []) ->
+              let* constr_id = munge_longident false ty c in
+              let constr_str = evar ("QCheck." ^ constr_id) in
+              pexp_apply constr_str [] |> ok
+            | _ ->
+              error
+                ( Type_not_supported_in_function_argument (Fmt.str "%a" Pprintast.core_type t2),
+                  typ.ptyp_loc )
+          in
           [head_args;
            (* range is an arbitrary, but for unit, bool, char, int, float, tup, ... names agress *)
-           aux t2] |> promote))
+           final_arg] |> promote))
            (* FIXME walk t2 recursively to collect n args *)
     | _ ->
         error
