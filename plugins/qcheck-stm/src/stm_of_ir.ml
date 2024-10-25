@@ -1607,7 +1607,7 @@ let stm config ir =
       @ sut_defs
       @ state_defs
       @ [
-          cmd;        (* FIXME: prints as (char -> char) *)
+          cmd;        (* FIXME: instantiate polymorphic function args ('a -> 'b) *)
           cmd_show;   (* FIXME: prints as Format.asprintf "%s %a <sut>" "map" (Fn.print true) f *)
           cleanup;
           arb_cmd;    (* Generator seems to work as expected *)
