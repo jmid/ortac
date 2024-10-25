@@ -35,18 +35,6 @@ let no_third_order_fun_or_big_tuple vd =
     | Ptyp_alias (t, _) -> contains_big_tuple t
     | _ -> false
   in
-(*
-  let rec contains_arrow_or_big_tuple ty =
-    match ty.ptyp_desc with
-(*  | Ptyp_arrow (_, l, r) ->
-      if contains_arrow l
-      then error (Functional_argument vd.vd_name.id_str, ty.ptyp_loc)
-      else *)
-    | Ptyp_tuple xs when List.length xs > 9 ->
-        error (Tuple_arity vd.vd_name.id_str, ty.ptyp_loc)
-    | Ptyp_tuple xs | Ptyp_constr (_, xs) -> traverse_ contains_arrow_or_big_tuple xs
-    | _ -> ok ()
-  in *)
   let rec aux ty =
     match ty.ptyp_desc with
     | Ptyp_arrow (_, l, r) ->
@@ -54,7 +42,6 @@ let no_third_order_fun_or_big_tuple vd =
         if contains_big_tuple l then error (Tuple_arity vd.vd_name.id_str, ty.ptyp_loc) else ok () in
       let* _ =
         if contains_nested_arrow l then error (Type_not_supported_in_function_argument vd.vd_name.id_str, ty.ptyp_loc) else ok () in
- (*   let* _ = contains_arrow_or_big_tuple l in*)
         aux r
     | _ -> ok ()
   in
