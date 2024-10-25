@@ -117,6 +117,10 @@ let subst_term state ?(out_of_scope = []) ~gos_t ?(old_lz = false) ~fun_vars ~ol
         else
           (* case x.f where f is _not_ a model field *)
           raise (ImpossibleSubst (term, `NotModel))
+    | Tvar { vs_name; _ } when List.mem vs_name fun_vars ->
+        let open Gospel in
+        let apply_sym = Symbols.lsymbol ~field:false (Ident.create ~loc:Location.none "Fn.apply") [] None in
+        Tterm_helper.t_app apply_sym [term] None Location.none
     (* If the first case didn't match, it must be because [gos_t] is not used to
        access one of its model fields, so we error out *)
     | Tvar { vs_name; _ } when List.mem vs_name gos_t ->
@@ -124,10 +128,6 @@ let subst_term state ?(out_of_scope = []) ~gos_t ?(old_lz = false) ~fun_vars ~ol
     (* Then, we check if the variable is not out_of_scope in the function we are building *)
     | Tvar { vs_name; _ } when List.exists (Ident.equal vs_name) out_of_scope ->
         raise (ImpossibleSubst (term, `OutOfScope))
-    | Tvar { vs_name; _ } when List.mem vs_name fun_vars ->
-        let open Gospel in
-        let apply_sym = Symbols.lsymbol ~field:false (Ident.create ~loc:Location.none "Fn.apply") [] None in
-        Tterm_helper.t_app apply_sym [term] None Location.none
     | Tvar _ -> term
     | Tconst _ -> term
     | Tapp (ls, terms) -> { term with t_node = Tapp (ls, List.map next terms) }
