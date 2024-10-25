@@ -251,9 +251,11 @@ let exp_of_core_type ?(use_small = false) inst typ =
         pexp_apply tup_constr
         <$> (List.map (fun e -> (Nolabel, e)) <$> promote_map aux xs)
     | Ptyp_arrow (Nolabel, t1, t2) ->
-        let fun_constr = pexp_ident (lident ("fun1")) (* FIXME generalize to 1-4 *)
-        in
-        pexp_apply fun_constr
+      (* Idea: "int -> string -> bool" -> "(fun2 Observable.int Observable.string QCheck.bool).gen" *)
+      (fun gen -> (* FIXME generalize to 1-4 *)
+        pexp_field
+          (pexp_apply (pexp_ident (lident "fun1")) gen)
+          (lident "gen"))
         <$>
         (List.map (fun e -> (Nolabel, e))
          <$>
@@ -267,7 +269,6 @@ let exp_of_core_type ?(use_small = false) inst typ =
                 ( Type_not_supported_in_function_argument (Fmt.str "%a" Pprintast.core_type t1),
                   typ.ptyp_loc )
           in
-          (* Idea: "int -> string -> bool" -> "fun2 Observable.int Observable.string QCheck.bool" *)
           (* visit all args, prefix with "Observable." *)
           (* the final arg is an arbitrary, hence we prefix with QCheck to avoid picking from QCheck.Gen *)
           let final_arg = match t2.ptyp_desc with
