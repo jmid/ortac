@@ -46,7 +46,7 @@ let subst_core_type inst ty =
             let l = aux l and r = aux r in
             let arrow = Ptyp_arrow (x, l, r) in
              (* "int -> char" ~~> "(int -> char) fun_" *)
-            Ptyp_constr (lident "fun_", [{ty with ptyp_desc = arrow}])
+            Ptyp_constr (lident "QCheck.fun_", [{ty with ptyp_desc = arrow}])
         | Ptyp_tuple elems ->
             let elems = List.map aux elems in
             Ptyp_tuple elems
