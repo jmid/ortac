@@ -1458,8 +1458,9 @@ let pp_ortac_cmd_case config suts last value =
         and* s = munge_longident false ty lid in
         let pp = qualify_pp ("pp_" ^ s) in
         ok
-          (match xs with
-          | [] -> pp
+          (match s,xs with
+          | "QCheck.fun_",_ -> pp (* functions have embedded printers *)
+          | _,[] -> pp
           | _ -> pexp_apply pp (List.map (fun x -> (Nolabel, x)) xs))
     (* FIXME : add Ptyp_arrow case here? *)
     | _ ->
