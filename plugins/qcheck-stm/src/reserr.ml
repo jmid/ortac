@@ -47,6 +47,7 @@ let level kind =
   | Impossible_term_substitution _ | Incompatible_type _
   | Incomplete_ret_val_computation _ | No_spec _ | Returning_nested_sut _
   | Sut_as_type_inst _ | Sut_in_tuple _ | Tuple_arity _ | Type_not_supported _
+  | Type_not_supported_in_function_argument _
     ->
       W.Warning
   | Impossible_init_state_generation _ | Incompatible_sut _
