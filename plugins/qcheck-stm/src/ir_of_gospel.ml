@@ -39,7 +39,7 @@ let no_third_order_fun_or_big_tuple vd =
     match ty.ptyp_desc with
     | Ptyp_arrow (_, l, r) ->
       let* _ =
-        if contains_big_tuple l then error (Tuple_arity vd.vd_name.id_str, ty.ptyp_loc) else ok () in
+        if contains_big_tuple l then error (Tuple_arity vd.vd_name.id_str, l.ptyp_loc) else ok () in
       let* _ =
         if contains_nested_arrow l then error (Type_not_supported_in_function_argument vd.vd_name.id_str, ty.ptyp_loc) else ok () in
         aux r
