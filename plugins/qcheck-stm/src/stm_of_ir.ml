@@ -8,9 +8,11 @@ let is_a_function ty =
   let open Ppxlib in
   match ty.ptyp_desc with Ptyp_arrow (_, _, _) -> true | _ -> false
 
-let ty_default = Ptyp_constr (noloc (Lident "char"), [])
+let ty_default_name = "char"
+let ty_default = Ptyp_constr (noloc (Lident ty_default_name), [])
 let pat_default = ppat_construct (lident "Char") None
-let exp_default = evar "char"
+let exp_default_name = "char"
+let exp_default = evar exp_default_name
 let res_default = Ident.create ~loc:Location.none "res"
 let list_append = list_fold_expr (qualify [ "Ortac_runtime" ] "append") "None"
 let res = lident "Res"
@@ -32,7 +34,7 @@ let may_raise_exception v =
   | _, _ -> true
 
 let subst_core_type ~insert_prefix inst ty =
-  let rec aux ty =
+  let rec aux ~inside_arrow ty =
     {
       ty with
       ptyp_desc =
@@ -43,16 +45,19 @@ let subst_core_type ~insert_prefix inst ty =
               ~some:(fun x -> x.ptyp_desc)
               (List.assoc_opt x inst)
         | Ptyp_arrow (x, l, r) ->
-            let l = aux l and r = aux r in
+            let l = aux ~inside_arrow:true l and r = aux ~inside_arrow:true r in
             let arrow = Ptyp_arrow (x, l, r) in
-            let fun_name = if insert_prefix then "QCheck.fun_" else "fun_" in
-             (* "int -> char" ~~> "(int -> char) fun_" *)
-            Ptyp_constr (lident fun_name, [{ty with ptyp_desc = arrow}])
+            if inside_arrow
+            then arrow
+            else
+              let fun_name = if insert_prefix then "QCheck.fun_" else "fun_" in
+              (* "int -> char" ~~> "(int -> char) fun_" *)
+              Ptyp_constr (lident fun_name, [{ty with ptyp_desc = arrow}])
         | Ptyp_tuple elems ->
-            let elems = List.map aux elems in
+            let elems = List.map (aux ~inside_arrow) elems in
             Ptyp_tuple elems
         | Ptyp_constr (c, args) ->
-            let args = List.map aux args in
+            let args = List.map (aux ~inside_arrow) args in
             Ptyp_constr (c, args)
         | Ptyp_object (_, _)
         | Ptyp_class (_, _)
@@ -63,7 +68,7 @@ let subst_core_type ~insert_prefix inst ty =
             failwith "Case should not happen in `subst_core_type'");
     }
   in
-  aux ty
+  aux ~inside_arrow:false ty
 
 let lazy_force =
   let open Gospel in
@@ -225,7 +230,17 @@ let pat_of_core_type inst typ =
   in
   aux typ
 
+let prefix_identifier ~prefix id =
+  let name = Printf.sprintf "%s.%s" prefix id in
+  (*pexp_apply*) (evar name) (*[]*)
+
 let exp_of_core_type ?(use_small = false) inst typ =
+  let rec collect_args_and_ret ty =
+    match ty.ptyp_desc with
+    | Ptyp_arrow (_, t1, t2) ->
+      let args,ret = collect_args_and_ret t2 in
+      t1::args,ret
+    | _ -> [],ty in
   let rec aux ty =
     let open Reserr in
     match ty.ptyp_desc with
@@ -250,41 +265,57 @@ let exp_of_core_type ?(use_small = false) inst typ =
         in
         pexp_apply tup_constr
         <$> (List.map (fun e -> (Nolabel, e)) <$> promote_map aux xs)
-    | Ptyp_arrow (Nolabel, t1, t2) ->
-      (* Idea: "int -> string -> bool" -> "(fun2 Observable.int Observable.string QCheck.bool).gen" *)
-      (fun gen -> (* FIXME generalize to 1-4 *)
-        pexp_field
-          (pexp_apply (pexp_ident (lident "fun1")) gen)
+    | Ptyp_arrow (_, _, _) ->
+      (* Idea:      "int -> bool" ~~> "(fun1 Observable.int QCheck.bool).gen"
+          "int -> string -> bool" ~~> "(fun2 Observable.int Observable.string QCheck.bool).gen" *)
+      let args,ret = collect_args_and_ret typ in
+      let arity = List.length args in
+      let fun_gen_name = Printf.sprintf "fun%i" arity in
+      let rec build_observable t = match t.ptyp_desc with
+        | Ptyp_constr (c, xs) ->
+          let* constr_id = munge_longident false t c in
+          let constr = prefix_identifier ~prefix:"Observable" constr_id in
+          (match xs with
+           | [] -> constr |> ok (* example: int -> Observable.int *)
+           | _ ->               (* example: int option -> Observable.option Observable.int *)
+             pexp_apply constr <$> (List.map (fun e -> (Nolabel, e)) <$> promote_map build_observable xs))
+        | Ptyp_var v ->
+          (match List.assoc_opt v inst with
+           | None -> prefix_identifier ~prefix:"Observable" ty_default_name |> ok
+           | Some t -> build_observable t) (*recurse on instantiated arg type*)
+        | _ ->
+          error
+            (Type_not_supported_in_function_argument (Fmt.str "%a" Pprintast.core_type t),
+             typ.ptyp_loc) in
+      (* range is an arbitrary, but for unit, bool, char, int, float, tup, ... names agress *)
+      let rec build_arbitrary t = match t.ptyp_desc with
+        | Ptyp_constr (c, xs) ->
+          let* constr_id = munge_longident false t c in
+          let constr = prefix_identifier ~prefix:"QCheck" constr_id in
+          (match xs with
+           | [] -> constr |> ok (* example: int -> QCheck.int *)
+           | _ ->               (* example: int option -> QCheck.option QCheck.int *)
+             pexp_apply constr <$> (List.map (fun e -> (Nolabel, e)) <$> promote_map build_arbitrary xs))
+        | Ptyp_var v ->
+          (match List.assoc_opt v inst with
+           | None -> prefix_identifier ~prefix:"QCheck" ty_default_name |> ok
+           | Some t -> build_arbitrary t) (*recurse on instantiated result type*)
+        | _ ->
+          error
+            (Type_not_supported_in_function_argument (Fmt.str "%a" Pprintast.core_type t),
+             t.ptyp_loc) in
+      (fun gen ->
+        pexp_field (* add the final field projection [.gen] to obtain a Gen.t from an arbitrary *)
+          (pexp_apply (pexp_ident (lident fun_gen_name)) gen)
           (lident "gen"))
         <$>
         (List.map (fun e -> (Nolabel, e))
          <$>
-         (let head_args = match t1.ptyp_desc with
-            | Ptyp_constr (c, []) ->
-              let* constr_id = munge_longident false ty c in
-              let constr_str = evar ("Observable." ^ constr_id) in
-              pexp_apply constr_str [] |> ok
-            | _ ->
-              error
-                ( Type_not_supported_in_function_argument (Fmt.str "%a" Pprintast.core_type t1),
-                  typ.ptyp_loc )
-          in
           (* visit all args, prefix with "Observable." *)
+         (let observable_args = List.map build_observable args in
           (* the final arg is an arbitrary, hence we prefix with QCheck to avoid picking from QCheck.Gen *)
-          let final_arg = match t2.ptyp_desc with
-            | Ptyp_constr (c, []) ->
-              let* constr_id = munge_longident false ty c in
-              let constr_str = evar ("QCheck." ^ constr_id) in
-              pexp_apply constr_str [] |> ok
-            | _ ->
-              error
-                ( Type_not_supported_in_function_argument (Fmt.str "%a" Pprintast.core_type t2),
-                  typ.ptyp_loc )
-          in
-          [head_args;
-           (* range is an arbitrary, but for unit, bool, char, int, float, tup, ... names agress *)
-           final_arg] |> promote))
-           (* FIXME walk t2 recursively to collect n args *)
+          let final_arg = build_arbitrary ret in
+          (observable_args @ [final_arg]) |> promote))
     | _ ->
         error
           ( Type_not_supported (Fmt.str "%a" Pprintast.core_type typ),
@@ -294,6 +325,9 @@ let exp_of_core_type ?(use_small = false) inst typ =
 
 let exp_of_ident id = pexp_ident (lident (str_of_ident id))
 
+(* Output a generator for one particular cmd by
+   - a capitalized function constructor, e.g., [show] to [fun x y z -> Show (x,y,z)]
+   - a list of generated arguments, strung together with [<*>], aka Gen.combine *)
 let arb_cmd_case config value =
   let open Reserr in
   let is_create = value.sut_vars = [] && Cfg.does_return_sut config value.ty in
@@ -327,6 +361,8 @@ let arb_cmd_case config value =
   let app l r = pexp_apply (evar "( <*> )") [ (Nolabel, l); (Nolabel, r) ] in
   List.fold_left app fun_cstr <$> gen_args
 
+(* Generate the [arb_cmd] definition as a uniform choice between the
+   [arb_cmd_case] outputs *)
 let arb_cmd config ir =
   let open Reserr in
   let* cmds = elist <$> promote_map (arb_cmd_case config) ir.values in
@@ -1013,7 +1049,7 @@ let pp_cmd_case config value =
         let* s = munge_longident false ty lid in
         let pp = qualify_pp ("pp_" ^ s) in
           (match s,xs with
-          | "QCheck.fun_",_ -> ok pp (* functions have embedded printers *)
+          | "fun_",_ -> ok pp (* functions have embedded printers *)
           | _,[] -> ok pp
           | _ ->
             let* xs = promote_map pp_of_ty xs in
@@ -1458,12 +1494,11 @@ let pp_ortac_cmd_case config suts last value =
         let* s = munge_longident false ty lid in
         let pp = qualify_pp ("pp_" ^ s) in
         (match s,xs with
-        | "QCheck.fun_",_ -> ok pp (* functions have embedded printers *)
+        | "fun_",_ -> ok pp (* functions have embedded printers *)
         | _,[] -> ok pp
         | _ ->
           let* xs = promote_map pp_of_ty xs in
           ok (pexp_apply pp (List.map (fun x -> (Nolabel, x)) xs)))
-    (* FIXME : add Ptyp_arrow case here? *)
     | _ ->
         error
           (Type_not_supported (Fmt.str "%a" Pprintast.core_type ty), ty.ptyp_loc)
@@ -1633,7 +1668,7 @@ let stm config ir =
       @ sut_defs
       @ state_defs
       @ [
-          cmd;        (* FIXME: instantiate polymorphic function args ('a -> 'b) *)
+          cmd;
           cmd_show;
           cleanup;
           arb_cmd;
