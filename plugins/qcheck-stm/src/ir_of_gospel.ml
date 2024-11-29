@@ -27,6 +27,13 @@ let no_third_order_fun_or_big_tuple vd =
     | Ptyp_alias (t, _) -> contains_nested_arrow t
     | _ -> false
   in
+  let rec highest_arity_arrow ty =
+    match ty.ptyp_desc with
+    | Ptyp_arrow (_, _l, r) -> 1 + highest_arity_arrow r
+    | Ptyp_tuple xs | Ptyp_constr (_, xs) -> List.fold_left max 0 (List.map highest_arity_arrow xs)
+    | Ptyp_alias (t, _) -> highest_arity_arrow t
+    | _ -> 0
+  in
   let rec contains_big_tuple ty =
     match ty.ptyp_desc with
     | Ptyp_arrow (_, l, r) -> contains_big_tuple l || contains_big_tuple r
@@ -42,7 +49,9 @@ let no_third_order_fun_or_big_tuple vd =
         if contains_big_tuple l then error (Tuple_arity vd.vd_name.id_str, l.ptyp_loc) else ok () in
       let* _ =
         if contains_nested_arrow l then error (Type_not_supported_in_function_argument vd.vd_name.id_str, ty.ptyp_loc) else ok () in
-        aux r
+      let* _ =
+        if highest_arity_arrow ty > 4 then error (Function_arity vd.vd_name.id_str, ty.ptyp_loc) else ok () in
+      aux r
     | _ -> ok ()
   in
   aux vd.vd_type
